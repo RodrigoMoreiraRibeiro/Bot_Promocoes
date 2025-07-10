@@ -1,26 +1,60 @@
-name: Buscar ofertas Kabum
+name: Kabum GPU Bot - Buscar Ofertas
 
 on:
   schedule:
     - cron: "0 */2 * * *"  # A cada 2 horas
-  workflow_dispatch:
+  workflow_dispatch:  # Permite execução manual
+    inputs:
+      debug_mode:
+        description: 'Modo debug (mais logs)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
     steps:
-      - name: Clonar repositório
-        uses: actions/checkout@v3
-
-      - name: Instalar Python
+      - name: 🔄 Clonar repositório
+        uses: actions/checkout@v4
+        
+      - name: 🐍 Configurar Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
-      - name: Instalar dependências
+          cache: 'pip'
+          
+      - name: 📦 Instalar dependências
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Executar o bot
+          
+      - name: 🔍 Executar bot de busca
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DEBUG_MODE: ${{ github.event.inputs.debug_mode }}
         run: |
           python kabum_gpu_bot.py
+          
+      - name: 📊 Upload de logs (se falhar)
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: bot-logs
+          path: |
+            *.log
+            historico_ofertas.json
+          retention-days: 7
+          
+      - name: 📈 Salvar histórico
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: historico-ofertas
+          path: historico_ofertas.json
+          retention-days: 30
