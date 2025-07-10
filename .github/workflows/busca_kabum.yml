@@ -33,12 +33,28 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: 🔍 Debug completo
+              env:
+                DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+                DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
+              run: |
+                echo "=== DEBUG AMBIENTE ==="
+                echo "Trigger: ${{ github.event_name }}"
+                echo "DISCORD_WEBHOOK_URL existe: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}"
+                echo "DEBUG_MODE input: ${{ github.event.inputs.debug_mode }}"
+                echo "DEBUG_MODE final: ${{ github.event.inputs.debug_mode || 'false' }}"
+                echo "Variáveis de ambiente:"
+                env | grep -E "(DISCORD|DEBUG)" || echo "Nenhuma variável encontrada"
+                echo "======================"
           
       - name: 🔍 Executar bot de busca
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          DEBUG_MODE: ${{ github.event.inputs.debug_mode }}
+          DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
         run: |
+          echo "Debug: DISCORD_WEBHOOK_URL definida: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}"
+          echo "Debug: DEBUG_MODE = ${{ github.event.inputs.debug_mode || 'false' }}"
           python kabum_gpu_bot.py
           
       - name: 📊 Upload de logs (se falhar)
