@@ -1,5 +1,2 @@
-discord.py==2.3.2
-aiohttp==3.9.1
-beautifulsoup4==4.12.2
-python-dotenv==1.0.0
-lxml==4.9.3
+python-telegram-bot==20.7
+requests
