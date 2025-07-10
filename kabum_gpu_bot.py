@@ -1,4 +1,4 @@
-# kabum_gpu_bot.py - Versão Corrigida
+# kabum_gpu_bot.py - Versão Atualizada e Otimizada
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -41,11 +41,11 @@ GPU_LISTA = {
     }
 }
 
-# Headers mais realistas para evitar detecção
+# Headers atualizados e mais diversos
 HEADERS_LIST = [
     {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
@@ -53,15 +53,33 @@ HEADERS_LIST = [
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "none",
-        "Cache-Control": "max-age=0"
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+        "DNT": "1"
     },
     {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "pt-BR,pt;q=0.8,en-US;q=0.5,en;q=0.3",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1"
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "DNT": "1"
+    },
+    {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1"
     }
 ]
 
@@ -76,46 +94,49 @@ def get_random_headers():
     return random.choice(HEADERS_LIST)
 
 def extrair_preco(texto):
-    """Extrai preço do texto, lidando com diferentes formatos da Kabum"""
+    """Extrai preço do texto com melhor precisão para formatos brasileiros"""
     if not texto:
         return None
     
-    # Remove caracteres especiais e limpa o texto
-    texto = texto.replace('\xa0', '').replace('R$', '').strip()
+    # Limpa o texto
+    texto = texto.replace('\xa0', ' ').replace('\n', ' ').strip()
+    
+    # Remove prefixos comuns
+    texto = re.sub(r'^(R\$|RS|por|de|até)\s*', '', texto, flags=re.IGNORECASE)
     
     # Pula textos que claramente não são preços à vista
-    if any(termo in texto.lower() for termo in ['sem juros', 'parcela', 'x de', '12x', '10x', '/mês', 'cartão']):
+    termos_excluir = ['sem juros', 'parcela', 'x de', '12x', '10x', '/mês', 'cartão', 'dividido', 'parcelado']
+    if any(termo in texto.lower() for termo in termos_excluir):
         return None
     
-    # Busca por padrões de preço
+    # Padrões de preço brasileiros mais precisos
     patterns = [
-        r'(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',  # 2.299,99 ou 1.999,99
-        r'(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',  # 2,299.99 (formato alternativo)
-        r'(\d+,\d{2})',  # 999,99
-        r'(\d+\.\d{2})',  # 999.99
-        r'(\d+)'  # 999
+        r'(\d{1,2}\.\d{3},\d{2})',  # 12.299,99
+        r'(\d{1,3}\.\d{3},\d{2})',  # 2.299,99
+        r'(\d{3,4},\d{2})',         # 2299,99
+        r'(\d{1,2}\.\d{3})',        # 12.299
+        r'(\d{3,4})'                # 2299
     ]
     
     for pattern in patterns:
-        match = re.search(pattern, texto)
-        if match:
-            preco_str = match.group(1)
+        matches = re.findall(pattern, texto)
+        for match in matches:
             try:
-                # Converte para float - formato brasileiro
-                if '.' in preco_str and ',' in preco_str:
+                # Converte para float
+                if '.' in match and ',' in match:
                     # Formato brasileiro: 2.299,99
-                    preco_str = preco_str.replace('.', '').replace(',', '.')
-                elif ',' in preco_str and len(preco_str.split(',')[1]) == 2:
+                    valor_str = match.replace('.', '').replace(',', '.')
+                elif ',' in match:
                     # Formato: 2299,99
-                    preco_str = preco_str.replace(',', '.')
-                elif ',' in preco_str:
-                    # Formato: 2,299 (sem centavos)
-                    preco_str = preco_str.replace(',', '')
+                    valor_str = match.replace(',', '.')
+                else:
+                    # Formato: 2299
+                    valor_str = match
                 
-                valor = float(preco_str)
+                valor = float(valor_str)
                 
                 # Validação: preço deve estar em uma faixa realista para GPUs
-                if 200 <= valor <= 15000:
+                if 200 <= valor <= 20000:
                     return valor
                     
             except ValueError:
@@ -123,270 +144,266 @@ def extrair_preco(texto):
     
     return None
 
-def tentar_diferentes_urls(gpu_term):
-    """Tenta diferentes formatos de URL para a busca - CORRIGIDO"""
-    # Normaliza o termo de busca
+def criar_urls_busca(gpu_term):
+    """Cria URLs de busca otimizadas para a Kabum"""
+    # Normaliza o termo
     term_clean = gpu_term.strip().lower()
-    
-    # Remove espaços extras e caracteres especiais
-    term_dash = term_clean.replace(' ', '-').replace('_', '-')
+    term_dash = term_clean.replace(' ', '-')
     term_plus = quote_plus(gpu_term)
-    term_nospace = term_clean.replace(' ', '')
     
     urls = [
-        # Formato principal da Kabum (o que você mencionou)
+        # URL principal de busca
         f"https://www.kabum.com.br/busca/{term_dash}",
         
-        # Formato alternativo
+        # URL com parâmetros
         f"https://www.kabum.com.br/busca?query={term_plus}",
         
-        # Formato sem espaços
-        f"https://www.kabum.com.br/busca/{term_nospace}",
+        # URL específica para placas de vídeo
+        f"https://www.kabum.com.br/hardware/placa-de-video-vga?string={term_plus}",
         
-        # URL específica para hardware
-        f"https://www.kabum.com.br/hardware/placa-de-video-vga?query={term_plus}",
-        
-        # Formato com categoria
-        f"https://www.kabum.com.br/categoria/hardware/placa-de-video-vga?query={term_plus}"
+        # URL alternativa
+        f"https://www.kabum.com.br/cgi-search/sp.cgi?st=busca&ac=kabum&palavra={term_plus}",
     ]
     
     return urls
 
+def extrair_dados_produto(card, gpu_term, debug_mode=False):
+    """Extrai dados do produto de um card específico"""
+    try:
+        # Busca título com seletores atualizados
+        titulo_selectors = [
+            "span.nameCard",
+            "h3.nameCard", 
+            "h2.nameCard",
+            "a.nameCard",
+            "[data-testid='product-name']",
+            ".product-name",
+            ".productName",
+            "h3",
+            "h2",
+            "a[title]"
+        ]
+        
+        titulo_elem = None
+        for selector in titulo_selectors:
+            titulo_elem = card.select_one(selector)
+            if titulo_elem:
+                break
+        
+        if not titulo_elem:
+            if debug_mode:
+                logger.debug("Título não encontrado")
+            return None
+        
+        titulo = titulo_elem.get_text(strip=True) or titulo_elem.get("title", "")
+        
+        if debug_mode:
+            logger.debug(f"Título encontrado: {titulo}")
+        
+        # Verifica se é a GPU procurada
+        if not validar_gpu(titulo, gpu_term):
+            if debug_mode:
+                logger.debug(f"Não é {gpu_term}, pulando...")
+            return None
+        
+        # Busca preços com seletores atualizados
+        preco_selectors = [
+            "span.priceCard",
+            "span.cashPrice", 
+            "span.discountPrice",
+            "div.priceCard",
+            ".price-card",
+            ".cash-price",
+            ".discount-price",
+            "[data-testid='price']",
+            "[data-testid='cash-price']",
+            "span[class*='price']",
+            "div[class*='price']",
+            "strong[class*='price']"
+        ]
+        
+        preco = None
+        preco_texts = []
+        
+        # Busca por seletores específicos
+        for selector in preco_selectors:
+            elements = card.select(selector)
+            for elem in elements:
+                texto_preco = elem.get_text(strip=True)
+                if texto_preco:
+                    preco_texts.append(texto_preco)
+                    valor = extrair_preco(texto_preco)
+                    if valor and (preco is None or valor < preco):
+                        preco = valor
+        
+        # Busca adicional por texto contendo R$
+        if preco is None:
+            preco_regex = card.find_all(text=re.compile(r'R\$.*\d'))
+            for text in preco_regex:
+                if text.strip():
+                    preco_texts.append(text.strip())
+                    valor = extrair_preco(text.strip())
+                    if valor and (preco is None or valor < preco):
+                        preco = valor
+        
+        if debug_mode:
+            logger.debug(f"Preços encontrados: {preco_texts}")
+            logger.debug(f"Preço selecionado: R$ {preco}")
+        
+        if preco is None:
+            return None
+        
+        # Busca link
+        link_elem = (
+            card.select_one("a[href*='/produto/']") or
+            card.select_one("a") or
+            card.find_parent("a")
+        )
+        
+        if not link_elem:
+            if debug_mode:
+                logger.debug("Link não encontrado")
+            return None
+        
+        link = link_elem.get("href")
+        if link and not link.startswith("http"):
+            link = "https://www.kabum.com.br" + link
+        
+        return {
+            "titulo": titulo,
+            "preco": preco,
+            "link": link
+        }
+        
+    except Exception as e:
+        if debug_mode:
+            logger.debug(f"Erro ao extrair dados: {e}")
+        return None
+
+def validar_gpu(titulo, gpu_term):
+    """Valida se o título corresponde à GPU procurada"""
+    titulo_lower = titulo.lower()
+    gpu_parts = gpu_term.split()
+    
+    if len(gpu_parts) >= 2:
+        gpu_serie = gpu_parts[0].lower()  # rtx, gtx, rx
+        gpu_modelo = gpu_parts[1].lower()  # 3060, 4070, etc.
+        
+        # Verifica se contém a série e o modelo
+        if gpu_serie in titulo_lower and gpu_modelo in titulo_lower:
+            return True
+            
+        # Verifica apenas o modelo se for específico
+        if gpu_modelo in titulo_lower and len(gpu_modelo) >= 4:
+            return True
+    
+    return gpu_term.lower() in titulo_lower
+
 def buscar_ofertas(gpu_term, max_price):
-    """Busca ofertas na Kabum com seletores atualizados"""
-    urls = tentar_diferentes_urls(gpu_term)
+    """Busca ofertas com seletores atualizados"""
+    urls = criar_urls_busca(gpu_term)
     
     for url_idx, busca_url in enumerate(urls):
         try:
-            headers = get_random_headers()
-            logger.info(f"Tentativa {url_idx + 1}: {busca_url}")
+            logger.info(f"Tentativa {url_idx + 1}/{len(urls)}: {busca_url}")
             
-            # Criar sessão para manter cookies
+            # Configura sessão
             session = requests.Session()
-            session.headers.update(headers)
+            session.headers.update(get_random_headers())
             
-            # Primeira requisição para obter cookies
-            response = session.get("https://www.kabum.com.br", timeout=30)
-            time.sleep(random.uniform(1, 2))
+            # Faz requisição inicial para cookies
+            session.get("https://www.kabum.com.br", timeout=30)
+            time.sleep(random.uniform(1, 3))
             
-            # Requisição de busca
+            # Faz busca
             response = session.get(busca_url, timeout=30, allow_redirects=True)
             
-            # Verificar se foi redirecionado para a página inicial
-            if response.url == "https://www.kabum.com.br/" or "busca" not in response.url:
-                logger.warning(f"Redirecionado para página inicial. URL atual: {response.url}")
+            if response.status_code != 200:
+                logger.warning(f"Status {response.status_code} para {busca_url}")
                 continue
             
-            logger.info(f"Sucesso! URL final: {response.url}")
+            # Verifica se foi redirecionado
+            if "busca" not in response.url and "produto" not in response.url:
+                logger.warning(f"Redirecionado para: {response.url}")
+                continue
             
             soup = BeautifulSoup(response.text, "html.parser")
             
-            # Debug: salvar HTML para análise
+            # Debug: salva HTML
             if debug_mode:
-                with open(f"debug_page_{gpu_term.replace(' ', '_')}.html", "w", encoding="utf-8") as f:
+                filename = f"debug_{gpu_term.replace(' ', '_')}_{url_idx}.html"
+                with open(filename, "w", encoding="utf-8") as f:
                     f.write(response.text)
-                logger.debug(f"HTML salvo para debug: debug_page_{gpu_term.replace(' ', '_')}.html")
+                logger.debug(f"HTML salvo: {filename}")
             
-            # Seletores mais abrangentes e atualizados
-            cards = (
-                soup.find_all("article", class_="productCard") or
-                soup.find_all("div", class_="productCard") or
-                soup.find_all("div", class_=re.compile(r"productCard|product-card", re.I)) or
-                soup.find_all("article", class_=re.compile(r"product", re.I)) or
-                soup.find_all("div", class_=re.compile(r"item.*card|card.*item", re.I)) or
-                soup.find_all("div", {"data-testid": re.compile(r"product", re.I)}) or
-                soup.find_all("div", class_=re.compile(r"listing.*item", re.I)) or
-                # Fallback: busca por links de produtos
-                soup.find_all("a", href=re.compile(r"/produto/"))
-            )
+            # Busca cards com seletores atualizados
+            card_selectors = [
+                "article.productCard",
+                "div.productCard", 
+                "div[class*='productCard']",
+                "div[class*='product-card']",
+                "article[class*='product']",
+                "div[data-testid*='product']",
+                "div[class*='item-card']",
+                "div[class*='listing-item']",
+                "a[href*='/produto/']"
+            ]
+            
+            cards = []
+            for selector in card_selectors:
+                found_cards = soup.select(selector)
+                if found_cards:
+                    cards.extend(found_cards)
+                    logger.info(f"Encontrados {len(found_cards)} cards com seletor: {selector}")
+            
+            # Remove duplicatas
+            cards = list(set(cards))
             
             if not cards:
-                logger.warning(f"Nenhum card encontrado para {gpu_term} na URL {busca_url}")
-                # Tentativa adicional: buscar por elementos que contenham preços
-                preco_elements = soup.find_all(text=re.compile(r"R\$.*\d"))
-                if preco_elements:
-                    logger.info(f"Encontrados {len(preco_elements)} elementos com preços, mas sem estrutura de cards")
+                logger.warning(f"Nenhum card encontrado para {gpu_term}")
                 continue
             
-            logger.info(f"Encontrados {len(cards)} cards na página")
+            logger.info(f"Total de {len(cards)} cards únicos encontrados")
             
+            # Processa cards
             ofertas = []
             for card_idx, card in enumerate(cards):
-                try:
-                    # Se o card for um link, pega o elemento pai
-                    if card.name == 'a':
-                        card = card.find_parent() or card
-                    
-                    # Busca título com seletores mais abrangentes
-                    titulo_elem = (
-                        card.find("span", class_="nameCard") or
-                        card.find("h3", class_=re.compile(r"name", re.I)) or
-                        card.find("h2", class_=re.compile(r"name", re.I)) or
-                        card.find("a", class_=re.compile(r"name", re.I)) or
-                        card.find("span", class_=re.compile(r"title", re.I)) or
-                        card.find("h3") or
-                        card.find("h2") or
-                        card.find("a", title=True) or
-                        card.find("a", href=re.compile(r"/produto/"))
-                    )
-                    
-                    if not titulo_elem:
-                        if debug_mode:
-                            logger.debug(f"Card {card_idx}: Sem título encontrado")
-                        continue
-                    
-                    titulo = titulo_elem.get_text(strip=True) or titulo_elem.get("title", "")
-                    
-                    if debug_mode:
-                        logger.debug(f"Card {card_idx}: Título encontrado: {titulo}")
-                    
-                    # Filtra por GPUs relevantes com busca mais flexível
-                    gpu_parts = gpu_term.split()
-                    if len(gpu_parts) >= 2:
-                        gpu_serie = gpu_parts[0]  # RTX, GTX, RX
-                        gpu_modelo = gpu_parts[1]  # 3060, 4070, etc.
-                        
-                        titulo_lower = titulo.lower()
-                        if not (gpu_serie.lower() in titulo_lower and gpu_modelo in titulo_lower):
-                            # Busca alternativa: verifica se pelo menos contém o modelo
-                            if gpu_modelo not in titulo_lower:
-                                if debug_mode:
-                                    logger.debug(f"Card {card_idx}: Não é {gpu_term}, pulando...")
-                                continue
-                    else:
-                        if not gpu_term.lower() in titulo.lower():
-                            if debug_mode:
-                                logger.debug(f"Card {card_idx}: Não contém {gpu_term}, pulando...")
-                            continue
-                    
-                    # Busca preços com seletores expandidos
-                    preco_elements = [
-                        card.find("span", class_="priceCard"),
-                        card.find("span", class_="cashPrice"),
-                        card.find("span", class_="discountPrice"),
-                        card.find("div", class_="priceCard"),
-                        card.find("span", class_=re.compile(r"price", re.I)),
-                        card.find("div", class_=re.compile(r"price", re.I)),
-                        card.find("strong", class_=re.compile(r"price", re.I)),
-                        card.find("span", string=re.compile(r"R\$")),
-                        card.find("div", string=re.compile(r"R\$")),
-                        card.find("span", class_=re.compile(r"value", re.I)),
-                        card.find("div", class_=re.compile(r"value", re.I))
-                    ]
-                    
-                    # Busca adicional por texto contendo R$
-                    preco_texts = card.find_all(text=re.compile(r"R\$"))
-                    for text in preco_texts:
-                        if text.parent:
-                            preco_elements.append(text.parent)
-                    
-                    # Remove elementos None e duplicados
-                    preco_elements = list(set([p for p in preco_elements if p is not None]))
-                    
-                    preco = None
-                    debug_precos = []
-                    
-                    for p in preco_elements:
-                        if not p:
-                            continue
-                        
-                        texto_preco = p.get_text(strip=True)
-                        debug_precos.append(texto_preco)
-                        
-                        # Pula preços que claramente são parcelados
-                        if any(termo in texto_preco.lower() for termo in ['sem juros', 'parcela', 'x de', '12x', '10x', '/mês']):
-                            continue
-                        
-                        valor = extrair_preco(texto_preco)
-                        if valor and valor > 100:
-                            if preco is None or valor < preco:
-                                preco = valor
-                                # Se encontrou um preço à vista, prioriza ele
-                                if any(termo in texto_preco.lower() for termo in ['à vista', 'avista', 'boleto', 'pix']):
-                                    break
-                    
-                    if debug_mode and debug_precos:
-                        logger.debug(f"Card {card_idx}: Preços encontrados: {debug_precos} -> Selecionado: R$ {preco}")
-                    
-                    if preco is None:
-                        if debug_mode:
-                            logger.debug(f"Card {card_idx}: Nenhum preço válido encontrado")
-                        continue
-                    
-                    if preco > max_price:
-                        if debug_mode:
-                            logger.debug(f"Card {card_idx}: Preço R$ {preco} acima do limite R$ {max_price}")
-                        continue
-                    
-                    # Busca link com mais opções
-                    link_elem = (
-                        card.find("a", href=re.compile(r"/produto/")) or
-                        card.find("a") or
-                        card.find_parent("a") or
-                        titulo_elem if titulo_elem.name == 'a' else None
-                    )
-                    
-                    if not link_elem:
-                        if debug_mode:
-                            logger.debug(f"Card {card_idx}: Sem link encontrado")
-                        continue
-                    
-                    link = link_elem.get("href")
-                    if link and not link.startswith("http"):
-                        link = "https://www.kabum.com.br" + link
-                    
-                    ofertas.append({
-                        "titulo": titulo,
-                        "preco": preco,
-                        "link": link
-                    })
-                    
-                    logger.info(f"✅ Oferta encontrada: {titulo} - R$ {preco}")
-                    
-                except Exception as e:
-                    logger.warning(f"Erro ao processar card {card_idx}: {e}")
-                    continue
+                dados = extrair_dados_produto(card, gpu_term, debug_mode)
+                
+                if dados and dados["preco"] <= max_price:
+                    ofertas.append(dados)
+                    logger.info(f"✅ Oferta: {dados['titulo']} - R$ {dados['preco']:.2f}")
             
             if ofertas:
-                logger.info(f"Encontradas {len(ofertas)} ofertas para {gpu_term}")
+                logger.info(f"Encontradas {len(ofertas)} ofertas válidas para {gpu_term}")
                 return ofertas
-            else:
-                logger.warning(f"Nenhuma oferta válida encontrada para {gpu_term}")
-                
+            
         except requests.RequestException as e:
-            logger.error(f"Erro na requisição para {gpu_term} (URL {url_idx + 1}): {e}")
-            continue
+            logger.error(f"Erro na requisição: {e}")
         except Exception as e:
-            logger.error(f"Erro inesperado ao buscar {gpu_term} (URL {url_idx + 1}): {e}")
-            continue
+            logger.error(f"Erro inesperado: {e}")
         
         # Delay entre tentativas
-        time.sleep(random.uniform(3, 6))
+        time.sleep(random.uniform(5, 10))
     
-    logger.info(f"Nenhuma oferta encontrada para {gpu_term} após {len(urls)} tentativas")
+    logger.info(f"Nenhuma oferta encontrada para {gpu_term}")
     return []
 
 def enviar_discord(categoria, modelo, ofertas):
-    """Envia ofertas para o Discord com rate limiting"""
-    if not ofertas:
-        logger.info(f"Nenhuma oferta para {categoria} {modelo}")
-        return
-    
-    if not WEBHOOK_URL:
-        logger.error("DISCORD_WEBHOOK_URL não configurada!")
+    """Envia ofertas para o Discord"""
+    if not ofertas or not WEBHOOK_URL:
         return
     
     logger.info(f"Enviando {len(ofertas)} ofertas para {categoria} {modelo}")
     
+    cores = {
+        "RTX": 0x76B900,  # Verde NVIDIA
+        "GTX": 0x76B900,  # Verde NVIDIA  
+        "RX": 0xED1C24    # Vermelho AMD
+    }
+    
     for i, oferta in enumerate(ofertas):
         try:
-            # Determina cor baseada na categoria
-            cores = {
-                "RTX": 0x76B900,  # Verde NVIDIA
-                "GTX": 0x76B900,  # Verde NVIDIA
-                "RX": 0xED1C24    # Vermelho AMD
-            }
-            
             payload = {
                 "embeds": [
                     {
@@ -407,19 +424,17 @@ def enviar_discord(categoria, modelo, ofertas):
             response = requests.post(WEBHOOK_URL, json=payload, timeout=10)
             response.raise_for_status()
             
-            logger.info(f"Oferta enviada: {oferta['titulo']} - R$ {oferta['preco']:.2f}")
+            logger.info(f"✅ Enviado: {oferta['titulo']} - R$ {oferta['preco']:.2f}")
             
-            # Rate limiting - aguarda entre mensagens
+            # Rate limiting
             if i < len(ofertas) - 1:
                 time.sleep(2)
                 
-        except requests.RequestException as e:
-            logger.error(f"Erro ao enviar para Discord: {e}")
         except Exception as e:
-            logger.error(f"Erro inesperado ao enviar Discord: {e}")
+            logger.error(f"Erro ao enviar Discord: {e}")
 
 def salvar_historico(ofertas_totais):
-    """Salva histórico das ofertas encontradas"""
+    """Salva histórico das ofertas"""
     try:
         historico = {
             "timestamp": datetime.now().isoformat(),
@@ -431,33 +446,34 @@ def salvar_historico(ofertas_totais):
         with open("historico_ofertas.json", "w", encoding="utf-8") as f:
             json.dump(historico, f, ensure_ascii=False, indent=2)
             
-        logger.info(f"Histórico salvo: {ofertas_totais} ofertas encontradas")
+        logger.info(f"Histórico salvo: {ofertas_totais} ofertas")
         
     except Exception as e:
         logger.error(f"Erro ao salvar histórico: {e}")
 
 def main():
-    """Função principal do bot"""
-    logger.info("=== INICIANDO BUSCA DE OFERTAS KABUM ===")
+    """Função principal"""
+    logger.info("=== INICIANDO KABUM GPU BOT ===")
     
     if not WEBHOOK_URL:
-        logger.error("DISCORD_WEBHOOK_URL não configurada! Verificar secrets do GitHub.")
+        logger.error("DISCORD_WEBHOOK_URL não configurada!")
         return
     
     ofertas_totais = 0
     
-    # Testa apenas RTX 4060 primeiro
+    # Modo debug: testa apenas RTX 4060
     if debug_mode:
-        logger.info("Modo debug: testando apenas RTX 4060")
+        logger.info("🔍 Modo debug: testando RTX 4060")
         ofertas = buscar_ofertas("RTX 4060", 2500)
         if ofertas:
             ofertas_totais += len(ofertas)
             enviar_discord("RTX", "4060", ofertas)
     else:
+        # Modo normal: busca todas as GPUs
         for categoria, modelos in GPU_LISTA.items():
             for modelo, preco_max in modelos.items():
                 termo_busca = f"{categoria} {modelo}"
-                logger.info(f"Buscando {termo_busca} (até R$ {preco_max})")
+                logger.info(f"🔍 Buscando {termo_busca} (até R$ {preco_max})")
                 
                 ofertas = buscar_ofertas(termo_busca, preco_max)
                 
@@ -465,13 +481,13 @@ def main():
                     ofertas_totais += len(ofertas)
                     enviar_discord(categoria, modelo, ofertas)
                 
-                # Aguarda entre buscas para evitar rate limiting
-                time.sleep(random.uniform(10, 18))
+                # Delay entre buscas
+                time.sleep(random.uniform(10, 20))
     
     # Salva histórico
     salvar_historico(ofertas_totais)
     
-    logger.info(f"=== BUSCA FINALIZADA: {ofertas_totais} ofertas encontradas ===")
+    logger.info(f"=== FINALIZADO: {ofertas_totais} ofertas encontradas ===")
 
 if __name__ == "__main__":
     main()
