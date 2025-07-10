@@ -26,11 +26,13 @@ HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
 def extrair_preco(texto):
+    texto = texto.replace('\xa0', '').replace('R$', '')  # limpa o espaço especial e símbolo R$
     preco = re.sub(r'[^0-9,]', '', texto).replace(',', '.')
     try:
         return float(preco)
     except:
         return None
+
 
 
 def buscar_ofertas(gpu_term, max_price):
