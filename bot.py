@@ -15,7 +15,7 @@ async def forward_to_discord(update: Update, context: ContextTypes.DEFAULT_TYPE)
         embed_data = {
             "embeds": [
                 {
-                    "title": "📦 Nova Promoção Detectada",
+                    "title": "🔥🔥 Nova Promoção Detectada 🔥🔥",
                     "color": 0x00ff00,  # verde
                     "footer": {
                         "text": "Bot de Promoções",
