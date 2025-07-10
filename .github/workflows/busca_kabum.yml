@@ -20,57 +20,43 @@ jobs:
     timeout-minutes: 30
     
     steps:
-      - name: 🔄 Clonar repositório
-        uses: actions/checkout@v4
+    - name: 🔄 Clonar repositório
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
         
-      - name: 🐍 Configurar Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          
-      - name: 📦 Instalar dependências
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: 🔍 Debug completo
-              env:
-                DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-                DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
-              run: |
-                echo "=== DEBUG AMBIENTE ==="
-                echo "Trigger: ${{ github.event_name }}"
-                echo "DISCORD_WEBHOOK_URL existe: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}"
-                echo "DEBUG_MODE input: ${{ github.event.inputs.debug_mode }}"
-                echo "DEBUG_MODE final: ${{ github.event.inputs.debug_mode || 'false' }}"
-                echo "Variáveis de ambiente:"
-                env | grep -E "(DISCORD|DEBUG)" || echo "Nenhuma variável encontrada"
-                echo "======================"
-          
-      - name: 🔍 Executar bot de busca
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
-        run: |
-          echo "Debug: DISCORD_WEBHOOK_URL definida: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}"
-          echo "Debug: DEBUG_MODE = ${{ github.event.inputs.debug_mode || 'false' }}"
-          python kabum_gpu_bot.py
-          
-      - name: 📊 Upload de logs (se falhar)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bot-logs
-          path: |
-            *.log
-            historico_ofertas.json
-          retention-days: 7
-          
-      - name: 📈 Salvar histórico
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: historico-ofertas
-          path: historico_ofertas.json
-          retention-days: 30
+    - name: 📦 Instalar dependências
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: 🔍 Executar bot de busca
+      env:
+        DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
+      run: |
+        echo "Debug: DISCORD_WEBHOOK_URL definida: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}"
+        echo "Debug: DEBUG_MODE = ${{ github.event.inputs.debug_mode || 'false' }}"
+        python kabum_gpu_bot.py
+        
+    - name: 📊 Upload de logs (se falhar)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bot-logs
+        path: |
+          *.log
+          historico_ofertas.json
+        retention-days: 7
+        
+    - name: 📈 Salvar histórico
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: historico-ofertas
+        path: historico_ofertas.json
+        retention-days: 30
