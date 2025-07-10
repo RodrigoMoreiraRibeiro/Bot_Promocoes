@@ -1,62 +1,64 @@
-name: Kabum GPU Bot - Buscar Ofertas
+name: Bot Promoções KaBuM
 
 on:
-  schedule:
-    - cron: "0 */2 * * *"  # A cada 2 horas
-  workflow_dispatch:  # Permite execução manual
+  # Execução manual
+  workflow_dispatch:
     inputs:
-      debug_mode:
-        description: 'Modo debug (mais logs)'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
+      duration:
+        description: 'Tempo para rodar (em horas)'
+        required: true
+        default: '6'
+        type: string
+  
+  # Execução automática (opcional)
+  schedule:
+    - cron: '0 */6 * * *'  # A cada 6 horas
 
 jobs:
-  run-bot:
+  run-promo-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     
     steps:
-    - name: 🔄 Clonar repositório
+    - name: Checkout código
       uses: actions/checkout@v4
-      
-    - name: 🐍 Configurar Python
+    
+    - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        cache: 'pip'
-        
-    - name: 📦 Instalar dependências
+    
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Instalar dependências
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        
-    - name: 🔍 Executar bot de busca
+    
+    - name: Executar bot de promoções
       env:
-        DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
+        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        PROMO_CHANNEL_ID: ${{ secrets.PROMO_CHANNEL_ID }}
       run: |
-        echo "Debug: DISCORD_WEBHOOK_URL definida: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}"
-        echo "Debug: DEBUG_MODE = ${{ github.event.inputs.debug_mode || 'false' }}"
-        python kabum_gpu_bot.py
-        
-    - name: 📊 Upload de logs (se falhar)
-      if: failure()
-      uses: actions/upload-artifact@v4
+        echo "🚀 Iniciando bot de promoções por ${{ github.event.inputs.duration || '6' }} horas..."
+        timeout ${{ github.event.inputs.duration || '6' }}h python bot_promocoes_kabum.py || echo "Bot finalizado após timeout"
+    
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v3
       with:
-        name: bot-logs
+        name: promo-bot-logs
         path: |
           *.log
-          historico_ofertas.json
+          logs/
         retention-days: 7
-        
-    - name: 📈 Salvar histórico
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: historico-ofertas
-        path: historico_ofertas.json
-        retention-days: 30
+    
+    - name: Notificar erro
+      if: failure()
+      run: |
+        echo "❌ Bot de promoções falhou! Verifique os logs."

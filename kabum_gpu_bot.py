@@ -1,494 +1,414 @@
-#!/usr/bin/env python3
-"""
-Bot para monitorar preços de GPUs na Kabum
-Versão corrigida com melhor parsing de preços e seletores atualizados
-"""
-
-import requests
+import discord
+from discord.ext import commands, tasks
+import aiohttp
+import asyncio
 from bs4 import BeautifulSoup
-import time
 import re
+import os
+from dotenv import load_dotenv
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
-from urllib.parse import urljoin, quote_plus
-import os
-from dataclasses import dataclass
 
-# Configuração do logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('kabum_gpu_bot.log'),
-        logging.StreamHandler()
-    ]
-)
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-@dataclass
-class GpuOffer:
-    """Classe para representar uma oferta de GPU"""
-    name: str
-    price: float
-    url: str
-    availability: str = "Disponível"
-    
-    def __str__(self):
-        return f"{self.name} - R$ {self.price:.2f}"
+# Carregar variáveis de ambiente
+load_dotenv()
 
-class KabumGpuBot:
-    def __init__(self, max_price: float = 1500.0, debug_mode: bool = False):
-        self.max_price = max_price
-        self.debug_mode = debug_mode
+class PromoMonitor:
+    def __init__(self):
         self.base_url = "https://www.kabum.com.br"
-        self.session = requests.Session()
-        
-        # Headers mais realistas
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Cache-Control': 'max-age=0'
+            'Upgrade-Insecure-Requests': '1'
         }
         
-        self.session.headers.update(self.headers)
-        
-        # Seletores CSS atualizados
-        self.selectors = {
-            'product_cards': [
-                'article.productCard',
-                'div.productCard',
-                'div[data-testid="product-card"]',
-                'div.sc-fqkvVR',
-                'div[class*="product"]',
-                'div[class*="card"]'
-            ],
-            'title': [
-                'h2.nameCard',
-                'h3.nameCard', 
-                'h2[class*="name"]',
-                'h3[class*="name"]',
-                'a[class*="name"]',
-                '.productCard h2',
-                '.productCard h3',
-                'h2',
-                'h3'
-            ],
-            'price': [
-                'span.priceCard',
-                'span[class*="price"]',
-                'div[class*="price"]',
-                '.priceCard',
-                'span.finalPrice',
-                'span[data-testid="price"]',
-                'span.sc-dcJsrY',
-                'span[class*="final"]'
-            ],
-            'link': [
-                'a.productLink',
-                'a[class*="product"]',
-                'a[class*="link"]',
-                'a[href*="/produto/"]',
-                'a'
-            ]
-        }
-        
-        # URLs de busca
-        self.search_urls = [
-            "/busca?query={query}",
-            "/hardware/placa-de-video-vga?string={query}",
-            "/busca/{query}",
-            "/hardware/placa-de-video-vga?order=price&limit=100&string={query}"
+        # Configurações de promoção
+        self.gpu_keywords = [
+            'RTX 4090', 'RTX 4080', 'RTX 4070', 'RTX 4060',
+            'RTX 3080', 'RTX 3070', 'RTX 3060',
+            'RX 7900', 'RX 7800', 'RX 7700', 'RX 6800', 'RX 6700'
         ]
         
-        # Padrões de GPU
-        self.gpu_patterns = {
-            'RTX 4060': r'RTX\s*4060(?!\s*Ti)',
-            'RTX 4060 Ti': r'RTX\s*4060\s*Ti',
-            'RTX 4070': r'RTX\s*4070(?!\s*Ti)',
-            'RTX 4070 Ti': r'RTX\s*4070\s*Ti',
-            'RTX 3060': r'RTX\s*3060(?!\s*Ti)',
-            'RTX 3060 Ti': r'RTX\s*3060\s*Ti',
-            'RTX 3070': r'RTX\s*3070(?!\s*Ti)',
-            'RTX 3070 Ti': r'RTX\s*3070\s*Ti',
-            'RX 6600': r'RX\s*6600(?!\s*XT)',
-            'RX 6600 XT': r'RX\s*6600\s*XT',
-            'RX 6700 XT': r'RX\s*6700\s*XT',
-            'RX 7600': r'RX\s*7600(?!\s*XT)',
-            'RX 7600 XT': r'RX\s*7600\s*XT'
+        # Preços máximos para considerar promoção (em R$)
+        self.max_prices = {
+            'RTX 4090': 8000,
+            'RTX 4080': 6000,
+            'RTX 4070': 4000,
+            'RTX 4060': 2500,
+            'RTX 3080': 4500,
+            'RTX 3070': 3500,
+            'RTX 3060': 2000,
+            'RX 7900': 5000,
+            'RX 7800': 4000,
+            'RX 7700': 3000,
+            'RX 6800': 3500,
+            'RX 6700': 2500
         }
         
-        self.discord_webhook = os.getenv('DISCORD_WEBHOOK_URL')
+        # Produtos já enviados (para evitar spam)
+        self.sent_products = set()
         
-        if self.debug_mode:
-            logger.setLevel(logging.DEBUG)
-            logger.info("🔍 Modo debug ativado")
-
-    def extract_price(self, price_text: str) -> Optional[float]:
-        """Extrai o preço do texto, lidando com diferentes formatos"""
-        if not price_text:
+    def extract_price_value(self, price_text: str) -> Optional[float]:
+        """Extrai o valor numérico do preço"""
+        try:
+            # Remove tudo exceto números, vírgulas e pontos
+            clean_price = re.sub(r'[^\d,.]', '', price_text)
+            
+            # Substitui vírgula por ponto se for decimal brasileiro
+            if ',' in clean_price and '.' in clean_price:
+                # Formato: 1.234,56
+                clean_price = clean_price.replace('.', '').replace(',', '.')
+            elif ',' in clean_price:
+                # Formato: 1234,56
+                clean_price = clean_price.replace(',', '.')
+            
+            return float(clean_price)
+        except:
             return None
-            
-        # Remove espaços e caracteres especiais
-        price_text = price_text.strip()
-        
-        # Padrões para extrair preço
-        patterns = [
-            r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',  # R$ 1.234,56
-            r'(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',        # 1.234,56
-            r'(\d+,\d{2})',                              # 1234,56
-            r'(\d+\.\d{2})',                             # 1234.56
-            r'(\d+)'                                     # 1234
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, price_text)
-            if match:
-                price_str = match.group(1)
-                try:
-                    # Converte para float (formato brasileiro)
-                    if ',' in price_str:
-                        price_str = price_str.replace('.', '').replace(',', '.')
-                    elif '.' in price_str and len(price_str.split('.')[-1]) == 2:
-                        # Já está em formato correto (1234.56)
-                        pass
-                    else:
-                        # Remove pontos de milhares
-                        price_str = price_str.replace('.', '')
-                    
-                    price = float(price_str)
-                    
-                    # Validação básica de preço
-                    if 100 <= price <= 50000:  # Preços válidos para GPUs
-                        return price
-                        
-                except (ValueError, TypeError):
-                    continue
-        
-        logger.debug(f"Não foi possível extrair preço de: '{price_text}'")
-        return None
-
-    def find_element_by_selectors(self, soup: BeautifulSoup, selectors: List[str]) -> Optional[BeautifulSoup]:
-        """Encontra elemento usando múltiplos seletores"""
-        for selector in selectors:
-            try:
-                element = soup.select_one(selector)
-                if element:
-                    return element
-            except Exception as e:
-                logger.debug(f"Erro com seletor {selector}: {e}")
-        return None
-
-    def find_elements_by_selectors(self, soup: BeautifulSoup, selectors: List[str]) -> List[BeautifulSoup]:
-        """Encontra elementos usando múltiplos seletores"""
-        elements = []
-        for selector in selectors:
-            try:
-                found = soup.select(selector)
-                if found:
-                    elements.extend(found)
-                    logger.debug(f"Encontrados {len(found)} elementos com seletor: {selector}")
-            except Exception as e:
-                logger.debug(f"Erro com seletor {selector}: {e}")
-        
-        # Remove duplicatas mantendo ordem
-        unique_elements = []
-        seen = set()
-        for elem in elements:
-            elem_id = id(elem)
-            if elem_id not in seen:
-                seen.add(elem_id)
-                unique_elements.append(elem)
-        
-        return unique_elements
-
-    def parse_product_card(self, card: BeautifulSoup) -> Optional[GpuOffer]:
-        """Extrai informações de um card de produto"""
-        try:
-            # Busca título
-            title_element = self.find_element_by_selectors(card, self.selectors['title'])
-            if not title_element:
-                logger.debug("Título não encontrado")
-                return None
-                
-            title = title_element.get_text(strip=True)
-            if not title:
-                logger.debug("Título vazio")
-                return None
-                
-            logger.debug(f"Título encontrado: {title}")
-            
-            # Verifica se é uma GPU que estamos procurando
-            gpu_match = None
-            for gpu_name, pattern in self.gpu_patterns.items():
-                if re.search(pattern, title, re.IGNORECASE):
-                    gpu_match = gpu_name
-                    break
-            
-            if not gpu_match:
-                logger.debug(f"Não é uma GPU de interesse: {title}")
-                return None
-                
-            # Busca preço
-            price_element = self.find_element_by_selectors(card, self.selectors['price'])
-            if not price_element:
-                logger.debug("Preço não encontrado")
-                return None
-                
-            price_text = price_element.get_text(strip=True)
-            price = self.extract_price(price_text)
-            
-            if price is None:
-                logger.debug(f"Não foi possível extrair preço de: {price_text}")
-                return None
-                
-            # Busca link
-            link_element = self.find_element_by_selectors(card, self.selectors['link'])
-            product_url = ""
-            if link_element:
-                href = link_element.get('href')
-                if href:
-                    product_url = urljoin(self.base_url, href)
-            
-            # Verifica se o preço está dentro do limite
-            if price <= self.max_price:
-                logger.info(f"✅ Oferta encontrada: {title} - R$ {price:.2f}")
-                return GpuOffer(
-                    name=title,
-                    price=price,
-                    url=product_url
-                )
-            else:
-                logger.debug(f"❌ Preço alto: {title} - R$ {price:.2f}")
-                return None
-                
-        except Exception as e:
-            logger.debug(f"Erro ao processar card: {e}")
-            return None
-
-    def search_gpus(self, query: str) -> List[GpuOffer]:
-        """Busca GPUs com uma query específica"""
-        offers = []
-        
-        for i, url_template in enumerate(self.search_urls):
-            try:
-                # Constrói URL
-                formatted_query = quote_plus(query)
-                search_url = self.base_url + url_template.format(query=formatted_query)
-                
-                logger.info(f"Tentativa {i+1}/{len(self.search_urls)}: {search_url}")
-                
-                # Faz requisição
-                response = self.session.get(search_url, timeout=30)
-                response.raise_for_status()
-                
-                if self.debug_mode:
-                    # Salva HTML para debug
-                    debug_file = f"debug_{query.replace(' ', '_')}_{i}.html"
-                    with open(debug_file, 'w', encoding='utf-8') as f:
-                        f.write(response.text)
-                    logger.debug(f"HTML salvo: {debug_file}")
-                
-                # Parse HTML
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # Busca cards de produtos
-                product_cards = self.find_elements_by_selectors(soup, self.selectors['product_cards'])
-                
-                if not product_cards:
-                    logger.debug(f"Nenhum card encontrado na tentativa {i+1}")
-                    continue
-                
-                logger.info(f"Total de {len(product_cards)} elementos únicos encontrados")
-                
-                # Processa cada card
-                for card in product_cards:
-                    offer = self.parse_product_card(card)
-                    if offer:
-                        offers.append(offer)
-                
-                # Se encontrou ofertas, para de tentar outras URLs
-                if offers:
-                    break
-                    
-                # Delay entre tentativas
-                time.sleep(2)
-                
-            except requests.RequestException as e:
-                logger.error(f"Erro na requisição {i+1}: {e}")
-                continue
-            except Exception as e:
-                logger.error(f"Erro inesperado na tentativa {i+1}: {e}")
-                continue
-        
-        return offers
-
-    def send_discord_notification(self, offers: List[GpuOffer]):
-        """Envia notificação para Discord"""
-        if not self.discord_webhook or not offers:
-            return
-            
-        try:
-            embed = {
-                "title": f"🎮 {len(offers)} GPU(s) em Promoção na Kabum!",
-                "color": 0x00ff00,
-                "timestamp": datetime.now().isoformat(),
-                "fields": []
-            }
-            
-            for offer in offers:
-                embed["fields"].append({
-                    "name": offer.name,
-                    "value": f"💰 R$ {offer.price:.2f}\n🔗 [Ver produto]({offer.url})",
-                    "inline": True
-                })
-            
-            data = {
-                "embeds": [embed]
-            }
-            
-            response = requests.post(self.discord_webhook, json=data, timeout=10)
-            if response.status_code == 204:
-                logger.info("✅ Notificação Discord enviada com sucesso")
-            else:
-                logger.error(f"❌ Erro ao enviar Discord: {response.status_code}")
-                
-        except Exception as e:
-            logger.error(f"Erro ao enviar notificação Discord: {e}")
-
-    def save_history(self, offers: List[GpuOffer]):
-        """Salva histórico de ofertas"""
-        try:
-            history_file = "gpu_offers_history.json"
-            
-            # Carrega histórico existente
-            history = []
-            if os.path.exists(history_file):
-                try:
-                    with open(history_file, 'r', encoding='utf-8') as f:
-                        history = json.load(f)
-                except:
-                    history = []
-            
-            # Adiciona ofertas atuais
-            for offer in offers:
-                history.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "name": offer.name,
-                    "price": offer.price,
-                    "url": offer.url
-                })
-            
-            # Salva histórico atualizado
-            with open(history_file, 'w', encoding='utf-8') as f:
-                json.dump(history, f, indent=2, ensure_ascii=False)
-                
-            logger.info(f"Histórico salvo: {len(offers)} ofertas")
-            
-        except Exception as e:
-            logger.error(f"Erro ao salvar histórico: {e}")
-
-    def run(self, gpus_to_monitor: List[str] = None):
-        """Executa o monitoramento"""
-        if gpus_to_monitor is None:
-            gpus_to_monitor = ['RTX 4060', 'RTX 4060 Ti', 'RTX 4070', 'RTX 3060', 'RTX 3060 Ti']
-        
-        logger.info("=== INICIANDO KABUM GPU BOT ===")
-        logger.info(f"💰 Preço máximo: R$ {self.max_price:.2f}")
-        logger.info(f"🔍 GPUs monitoradas: {', '.join(gpus_to_monitor)}")
-        
-        all_offers = []
-        
-        for gpu in gpus_to_monitor:
-            logger.info(f"\n🔍 Buscando: {gpu}")
-            
-            if self.debug_mode:
-                logger.info(f"🔍 Modo debug: testando {gpu}")
-            
-            offers = self.search_gpus(gpu)
-            
-            if offers:
-                logger.info(f"✅ Encontradas {len(offers)} ofertas para {gpu}")
-                all_offers.extend(offers)
-            else:
-                logger.info(f"❌ Nenhuma oferta encontrada para {gpu}")
-            
-            # Delay entre buscas
-            time.sleep(5)
-        
-        # Processa resultados
-        if all_offers:
-            logger.info(f"\n🎉 TOTAL: {len(all_offers)} ofertas encontradas!")
-            
-            # Remove duplicatas
-            unique_offers = []
-            seen_names = set()
-            for offer in all_offers:
-                if offer.name not in seen_names:
-                    seen_names.add(offer.name)
-                    unique_offers.append(offer)
-            
-            # Ordena por preço
-            unique_offers.sort(key=lambda x: x.price)
-            
-            # Exibe ofertas
-            print("\n" + "="*50)
-            print("🎮 OFERTAS ENCONTRADAS:")
-            print("="*50)
-            for offer in unique_offers:
-                print(f"• {offer}")
-                if offer.url:
-                    print(f"  🔗 {offer.url}")
-            print("="*50)
-            
-            # Salva histórico
-            self.save_history(unique_offers)
-            
-            # Envia notificações
-            self.send_discord_notification(unique_offers)
-            
-        else:
-            logger.info("❌ Nenhuma oferta encontrada")
-        
-        logger.info(f"=== FINALIZADO: {len(all_offers)} ofertas encontradas ===")
-
-def main():
-    """Função principal"""
-    # Configuração
-    MAX_PRICE = float(os.getenv('MAX_PRICE', '1500'))
-    DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
     
-    # Lista de GPUs para monitorar
-    GPUS_TO_MONITOR = [
-        'RTX 4060',
-        'RTX 4060 Ti', 
-        'RTX 4070',
-        'RTX 3060',
-        'RTX 3060 Ti',
-        'RTX 3070',
-        'RX 6600',
-        'RX 6600 XT',
-        'RX 7600'
-    ]
+    def is_promotion(self, product_name: str, price: float) -> bool:
+        """Verifica se o produto está em promoção"""
+        for keyword, max_price in self.max_prices.items():
+            if keyword.lower() in product_name.lower():
+                return price <= max_price
+        return False
+    
+    def get_discount_percentage(self, product_name: str, price: float) -> Optional[int]:
+        """Calcula percentual de desconto baseado no preço máximo"""
+        for keyword, max_price in self.max_prices.items():
+            if keyword.lower() in product_name.lower():
+                if price <= max_price:
+                    # Calcula desconto baseado em preço de referência mais alto
+                    reference_price = max_price * 1.3  # 30% acima do máximo
+                    discount = ((reference_price - price) / reference_price) * 100
+                    return int(discount)
+        return None
+    
+    async def search_gpu_promotions(self) -> List[Dict]:
+        """Busca promoções de placas de vídeo"""
+        promotions = []
+        
+        try:
+            # Buscar por categoria de placas de vídeo
+            search_url = f"{self.base_url}/hardware/placa-de-video-vga"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(search_url, headers=self.headers) as response:
+                    if response.status != 200:
+                        logger.error(f"Erro na requisição: {response.status}")
+                        return promotions
+                    
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    # Buscar cards de produtos
+                    product_cards = soup.find_all('div', class_='productCard')
+                    
+                    if not product_cards:
+                        product_cards = soup.find_all('article', class_='productCard')
+                    
+                    logger.info(f"Encontrados {len(product_cards)} produtos")
+                    
+                    for card in product_cards[:20]:  # Limitar a 20 produtos
+                        try:
+                            # Extrair nome
+                            name_elem = card.find('span', class_='nameCard') or card.find('h4', class_='nameCard')
+                            if not name_elem:
+                                continue
+                            
+                            name = name_elem.get_text(strip=True)
+                            
+                            # Verificar se é GPU que monitoramos
+                            if not any(keyword.lower() in name.lower() for keyword in self.gpu_keywords):
+                                continue
+                            
+                            # Extrair preço
+                            price_elem = card.find('span', class_='priceCard') or card.find('span', {'data-testid': 'price-value'})
+                            if not price_elem:
+                                continue
+                            
+                            price_text = price_elem.get_text(strip=True)
+                            price_value = self.extract_price_value(price_text)
+                            
+                            if not price_value:
+                                continue
+                            
+                            # Verificar se é promoção
+                            if not self.is_promotion(name, price_value):
+                                continue
+                            
+                            # Extrair link
+                            link_elem = card.find('a', href=True)
+                            if not link_elem:
+                                continue
+                            
+                            link = f"{self.base_url}{link_elem['href']}"
+                            
+                            # Verificar se já foi enviado
+                            product_id = f"{name}_{price_value}"
+                            if product_id in self.sent_products:
+                                continue
+                            
+                            # Extrair imagem
+                            img_elem = card.find('img')
+                            image_url = ""
+                            if img_elem and img_elem.get('src'):
+                                image_url = img_elem['src']
+                            
+                            # Calcular desconto
+                            discount = self.get_discount_percentage(name, price_value)
+                            
+                            promotion = {
+                                'name': name,
+                                'price': price_value,
+                                'price_text': price_text,
+                                'link': link,
+                                'image': image_url,
+                                'discount': discount,
+                                'id': product_id
+                            }
+                            
+                            promotions.append(promotion)
+                            logger.info(f"Promoção encontrada: {name} - R$ {price_value}")
+                            
+                        except Exception as e:
+                            logger.error(f"Erro ao processar produto: {e}")
+                            continue
+                    
+        except Exception as e:
+            logger.error(f"Erro na busca de promoções: {e}")
+        
+        return promotions
+
+class PromoBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix='!', intents=intents)
+        
+        self.monitor = PromoMonitor()
+        self.promo_channel_id = int(os.getenv('PROMO_CHANNEL_ID', 0))
+        
+    async def on_ready(self):
+        print(f'🤖 {self.user} conectado ao Discord!')
+        print(f'📊 Bot está em {len(self.guilds)} servidores')
+        
+        if self.promo_channel_id:
+            channel = self.get_channel(self.promo_channel_id)
+            if channel:
+                print(f'📢 Canal de promoções: {channel.name}')
+                
+                # Enviar mensagem de inicialização
+                embed = discord.Embed(
+                    title="🚀 Bot de Promoções KaBuM Iniciado!",
+                    description="Monitorando promoções de placas de vídeo...",
+                    color=0x00ff00
+                )
+                await channel.send(embed=embed)
+            else:
+                print(f'❌ Canal de promoções não encontrado: {self.promo_channel_id}')
+        
+        # Iniciar monitoramento
+        self.check_promotions.start()
+        
+        await self.change_presence(activity=discord.Game(name="🔍 Monitorando promoções"))
+        
+    @tasks.loop(minutes=30)  # Verificar a cada 30 minutos
+    async def check_promotions(self):
+        """Verifica promoções periodicamente"""
+        try:
+            logger.info("🔍 Verificando promoções...")
+            
+            promotions = await self.monitor.search_gpu_promotions()
+            
+            if not promotions:
+                logger.info("❌ Nenhuma promoção encontrada")
+                return
+            
+            if not self.promo_channel_id:
+                logger.warning("❌ Canal de promoções não configurado")
+                return
+            
+            channel = self.get_channel(self.promo_channel_id)
+            if not channel:
+                logger.error(f"❌ Canal {self.promo_channel_id} não encontrado")
+                return
+            
+            # Enviar cada promoção
+            for promo in promotions:
+                await self.send_promotion(channel, promo)
+                
+                # Marcar como enviado
+                self.monitor.sent_products.add(promo['id'])
+                
+                # Aguardar um pouco entre envios
+                await asyncio.sleep(2)
+            
+            logger.info(f"✅ Enviadas {len(promotions)} promoções")
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao verificar promoções: {e}")
+    
+    async def send_promotion(self, channel, promo):
+        """Envia uma promoção para o canal"""
+        try:
+            embed = discord.Embed(
+                title="🚨 PROMOÇÃO ENCONTRADA!",
+                description=promo['name'],
+                color=0xff4444,
+                url=promo['link']
+            )
+            
+            embed.add_field(
+                name="💰 Preço",
+                value=f"**R$ {promo['price']:.2f}**",
+                inline=True
+            )
+            
+            if promo['discount']:
+                embed.add_field(
+                    name="🏷️ Desconto",
+                    value=f"**{promo['discount']}% OFF**",
+                    inline=True
+                )
+            
+            embed.add_field(
+                name="🔗 Link",
+                value=f"[Ver na KaBuM]({promo['link']})",
+                inline=False
+            )
+            
+            if promo['image']:
+                embed.set_thumbnail(url=promo['image'])
+            
+            embed.set_footer(
+                text=f"KaBuM Bot • {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+            )
+            
+            # Enviar com menção @everyone ou @here
+            await channel.send("🚨 **PROMOÇÃO DE PLACA DE VÍDEO!** 🚨", embed=embed)
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao enviar promoção: {e}")
+
+bot = PromoBot()
+
+# Comandos manuais
+@bot.command(name='verificar', help='Verificar promoções manualmente')
+@commands.has_permissions(administrator=True)
+async def verificar_promo(ctx):
+    """Comando para verificar promoções manualmente"""
+    await ctx.send("🔍 Verificando promoções...")
     
     try:
-        # Cria e executa bot
-        bot = KabumGpuBot(max_price=MAX_PRICE, debug_mode=DEBUG_MODE)
-        bot.run(GPUS_TO_MONITOR)
+        promotions = await bot.monitor.search_gpu_promotions()
         
-    except KeyboardInterrupt:
-        logger.info("\n⏹️  Bot interrompido pelo usuário")
+        if not promotions:
+            await ctx.send("❌ Nenhuma promoção encontrada no momento")
+            return
+        
+        embed = discord.Embed(
+            title="🚨 Promoções Encontradas",
+            description=f"Foram encontradas {len(promotions)} promoções!",
+            color=0x00ff00
+        )
+        
+        for i, promo in enumerate(promotions[:5], 1):
+            embed.add_field(
+                name=f"{i}. {promo['name'][:40]}...",
+                value=f"💰 **R$ {promo['price']:.2f}**\n🔗 [Ver produto]({promo['link']})",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+        
     except Exception as e:
-        logger.error(f"❌ Erro crítico: {e}")
-        raise
+        await ctx.send(f"❌ Erro ao verificar promoções: {e}")
+
+@bot.command(name='config', help='Configurar preços máximos')
+@commands.has_permissions(administrator=True)
+async def configurar(ctx):
+    """Mostrar configuração atual"""
+    embed = discord.Embed(
+        title="⚙️ Configuração do Bot",
+        color=0x0099ff
+    )
+    
+    embed.add_field(
+        name="📢 Canal de Promoções",
+        value=f"<#{bot.promo_channel_id}>" if bot.promo_channel_id else "Não configurado",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔍 Verificação",
+        value="A cada 30 minutos",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="📊 Produtos Enviados",
+        value=f"{len(bot.monitor.sent_products)} produtos",
+        inline=True
+    )
+    
+    # Mostrar preços máximos
+    precos_text = ""
+    for gpu, preco in list(bot.monitor.max_prices.items())[:5]:
+        precos_text += f"{gpu}: R$ {preco}\n"
+    
+    embed.add_field(
+        name="💰 Preços Máximos (alguns)",
+        value=precos_text,
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='limpar', help='Limpar lista de produtos enviados')
+@commands.has_permissions(administrator=True)
+async def limpar_enviados(ctx):
+    """Limpar lista de produtos já enviados"""
+    count = len(bot.monitor.sent_products)
+    bot.monitor.sent_products.clear()
+    await ctx.send(f"✅ Lista de produtos enviados limpa! ({count} produtos removidos)")
+
+@bot.event
+async def on_command_error(ctx, error):
+    """Tratamento de erros"""
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ Você não tem permissão para usar este comando!")
+    elif isinstance(error, commands.CommandNotFound):
+        await ctx.send("❌ Comando não encontrado! Use `!help` para ver os comandos disponíveis.")
+    else:
+        logger.error(f"Erro não tratado: {error}")
 
 if __name__ == "__main__":
-    main()
+    TOKEN = os.getenv('DISCORD_TOKEN')
+    PROMO_CHANNEL_ID = os.getenv('PROMO_CHANNEL_ID')
+    
+    if not TOKEN:
+        print("❌ Token do Discord não encontrado!")
+        print("Configure DISCORD_TOKEN como variável de ambiente")
+        exit(1)
+    
+    if not PROMO_CHANNEL_ID:
+        print("⚠️ Canal de promoções não configurado!")
+        print("Configure PROMO_CHANNEL_ID com o ID do canal #promoções")
+        print("Para obter o ID: Clique com botão direito no canal > Copiar ID")
+    
+    print("🚀 Iniciando bot de promoções...")
+    
+    try:
+        bot.run(TOKEN)
+    except Exception as e:
+        logger.error(f"Erro ao executar o bot: {e}")
+        exit(1)
