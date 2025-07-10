@@ -9,8 +9,8 @@ WEBHOOK_URL = "https://discord.com/api/webhooks/1392933781886992566/NfSnIQIhXj-3
 GPU_LISTA = {
     "RTX": {
         "3060": 1700,
-        "4060": 1900,
-        "4070": 2700
+        "4060": 2500,
+        "4070": 3000
     },
     "GTX": {
         "1660": 1100,
