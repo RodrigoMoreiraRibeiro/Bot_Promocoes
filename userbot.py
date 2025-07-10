@@ -7,7 +7,7 @@ api_id = int(os.getenv('API_ID'))
 api_hash = os.getenv('API_HASH')
 grupo_privado_id = int(os.getenv('GRUPO_PRIVADO_ID'))
 
-canais_para_monitorar = ['ofertaskabum', 'peperaiohardware', 'anrutech', 'estudandodevops']
+canais_para_monitorar = ['ofertaskabum', 'peperaiohardware', 'anrutech']
 
 client = TelegramClient('userbot_session', api_id, api_hash)
 
