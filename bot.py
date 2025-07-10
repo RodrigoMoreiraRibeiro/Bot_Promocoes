@@ -1,5 +1,3 @@
-import sys
-sys.exit(0)
 import requests
 import os
 from telegram import Update
