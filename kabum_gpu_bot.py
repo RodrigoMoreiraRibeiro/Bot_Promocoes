@@ -1,4 +1,4 @@
-# kabum_gpu_bot.py - Versão Atualizada e Otimizada
+# kabum_gpu_bot.py - Versão Corrigida com Seletores Atualizados
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -41,7 +41,7 @@ GPU_LISTA = {
     }
 }
 
-# Headers atualizados e mais diversos
+# Headers mais realistas
 HEADERS_LIST = [
     {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
@@ -55,31 +55,8 @@ HEADERS_LIST = [
         "Sec-Fetch-Site": "none",
         "Sec-Fetch-User": "?1",
         "Cache-Control": "max-age=0",
-        "DNT": "1"
-    },
-    {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.8,en-US;q=0.5,en;q=0.3",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "DNT": "1"
-    },
-    {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1"
+        "DNT": "1",
+        "Pragma": "no-cache"
     }
 ]
 
@@ -99,13 +76,13 @@ def extrair_preco(texto):
         return None
     
     # Limpa o texto
-    texto = texto.replace('\xa0', ' ').replace('\n', ' ').strip()
+    texto = texto.replace('\xa0', ' ').replace('\n', ' ').replace('\t', ' ').strip()
     
     # Remove prefixos comuns
     texto = re.sub(r'^(R\$|RS|por|de|até)\s*', '', texto, flags=re.IGNORECASE)
     
     # Pula textos que claramente não são preços à vista
-    termos_excluir = ['sem juros', 'parcela', 'x de', '12x', '10x', '/mês', 'cartão', 'dividido', 'parcelado']
+    termos_excluir = ['sem juros', 'parcela', 'x de', '12x', '10x', '/mês', 'cartão', 'dividido', 'parcelado', 'boleto']
     if any(termo in texto.lower() for termo in termos_excluir):
         return None
     
@@ -161,16 +138,16 @@ def criar_urls_busca(gpu_term):
         # URL específica para placas de vídeo
         f"https://www.kabum.com.br/hardware/placa-de-video-vga?string={term_plus}",
         
-        # URL alternativa
-        f"https://www.kabum.com.br/cgi-search/sp.cgi?st=busca&ac=kabum&palavra={term_plus}",
+        # URL de categoria com filtro
+        f"https://www.kabum.com.br/hardware/placa-de-video-vga?order=price&limit=100&string={term_plus}",
     ]
     
     return urls
 
-def extrair_dados_produto(card, gpu_term, debug_mode=False):
-    """Extrai dados do produto de um card específico"""
+def extrair_dados_produto(element, gpu_term, debug_mode=False):
+    """Extrai dados do produto de um elemento específico"""
     try:
-        # Busca título com seletores atualizados
+        # Busca título com seletores mais amplos
         titulo_selectors = [
             "span.nameCard",
             "h3.nameCard", 
@@ -179,23 +156,38 @@ def extrair_dados_produto(card, gpu_term, debug_mode=False):
             "[data-testid='product-name']",
             ".product-name",
             ".productName",
-            "h3",
-            "h2",
-            "a[title]"
+            "h3", "h2", "h1",
+            "a[title]",
+            "span[title]",
+            "div[title]",
+            "[class*='name']",
+            "[class*='title']"
         ]
         
         titulo_elem = None
-        for selector in titulo_selectors:
-            titulo_elem = card.select_one(selector)
-            if titulo_elem:
-                break
+        titulo = ""
         
-        if not titulo_elem:
+        for selector in titulo_selectors:
+            titulo_elem = element.select_one(selector)
+            if titulo_elem:
+                titulo = titulo_elem.get_text(strip=True) or titulo_elem.get("title", "")
+                if titulo:
+                    break
+        
+        # Se não encontrou título, pega de atributos
+        if not titulo:
+            titulo = element.get("title", "") or element.get("alt", "")
+        
+        # Se ainda não encontrou, busca em texto
+        if not titulo:
+            text_content = element.get_text(strip=True)
+            if text_content and len(text_content) > 5:
+                titulo = text_content[:100]  # Limita a 100 caracteres
+        
+        if not titulo:
             if debug_mode:
                 logger.debug("Título não encontrado")
             return None
-        
-        titulo = titulo_elem.get_text(strip=True) or titulo_elem.get("title", "")
         
         if debug_mode:
             logger.debug(f"Título encontrado: {titulo}")
@@ -206,7 +198,7 @@ def extrair_dados_produto(card, gpu_term, debug_mode=False):
                 logger.debug(f"Não é {gpu_term}, pulando...")
             return None
         
-        # Busca preços com seletores atualizados
+        # Busca preços com seletores mais amplos
         preco_selectors = [
             "span.priceCard",
             "span.cashPrice", 
@@ -219,7 +211,12 @@ def extrair_dados_produto(card, gpu_term, debug_mode=False):
             "[data-testid='cash-price']",
             "span[class*='price']",
             "div[class*='price']",
-            "strong[class*='price']"
+            "strong[class*='price']",
+            "[class*='valor']",
+            "[class*='preco']",
+            "span",
+            "div",
+            "strong"
         ]
         
         preco = None
@@ -227,18 +224,19 @@ def extrair_dados_produto(card, gpu_term, debug_mode=False):
         
         # Busca por seletores específicos
         for selector in preco_selectors:
-            elements = card.select(selector)
+            elements = element.select(selector)
             for elem in elements:
                 texto_preco = elem.get_text(strip=True)
-                if texto_preco:
+                if texto_preco and ('R$' in texto_preco or ',' in texto_preco):
                     preco_texts.append(texto_preco)
                     valor = extrair_preco(texto_preco)
                     if valor and (preco is None or valor < preco):
                         preco = valor
         
-        # Busca adicional por texto contendo R$
+        # Busca adicional por texto contendo R$ ou números
         if preco is None:
-            preco_regex = card.find_all(text=re.compile(r'R\$.*\d'))
+            all_text = element.get_text()
+            preco_regex = re.findall(r'R\$\s*[\d.,]+|\d+[.,]\d+', all_text)
             for text in preco_regex:
                 if text.strip():
                     preco_texts.append(text.strip())
@@ -254,20 +252,30 @@ def extrair_dados_produto(card, gpu_term, debug_mode=False):
             return None
         
         # Busca link
-        link_elem = (
-            card.select_one("a[href*='/produto/']") or
-            card.select_one("a") or
-            card.find_parent("a")
-        )
+        link = None
         
-        if not link_elem:
-            if debug_mode:
-                logger.debug("Link não encontrado")
-            return None
+        # Se o próprio element é um link
+        if element.name == 'a':
+            link = element.get("href")
+        else:
+            # Busca link dentro do elemento
+            link_elem = (
+                element.select_one("a[href*='/produto/']") or
+                element.select_one("a[href*='/hardware/']") or
+                element.select_one("a") or
+                element.find_parent("a")
+            )
+            
+            if link_elem:
+                link = link_elem.get("href")
         
-        link = link_elem.get("href")
         if link and not link.startswith("http"):
             link = "https://www.kabum.com.br" + link
+        
+        # Se não encontrou link, usa uma URL de busca
+        if not link:
+            search_term = quote_plus(titulo)
+            link = f"https://www.kabum.com.br/busca?query={search_term}"
         
         return {
             "titulo": titulo,
@@ -283,6 +291,13 @@ def extrair_dados_produto(card, gpu_term, debug_mode=False):
 def validar_gpu(titulo, gpu_term):
     """Valida se o título corresponde à GPU procurada"""
     titulo_lower = titulo.lower()
+    gpu_term_lower = gpu_term.lower()
+    
+    # Verifica se contém o termo completo
+    if gpu_term_lower in titulo_lower:
+        return True
+    
+    # Verifica partes do termo
     gpu_parts = gpu_term.split()
     
     if len(gpu_parts) >= 2:
@@ -292,15 +307,11 @@ def validar_gpu(titulo, gpu_term):
         # Verifica se contém a série e o modelo
         if gpu_serie in titulo_lower and gpu_modelo in titulo_lower:
             return True
-            
-        # Verifica apenas o modelo se for específico
-        if gpu_modelo in titulo_lower and len(gpu_modelo) >= 4:
-            return True
     
-    return gpu_term.lower() in titulo_lower
+    return False
 
 def buscar_ofertas(gpu_term, max_price):
-    """Busca ofertas com seletores atualizados"""
+    """Busca ofertas com estratégia aprimorada"""
     urls = criar_urls_busca(gpu_term)
     
     for url_idx, busca_url in enumerate(urls):
@@ -313,18 +324,13 @@ def buscar_ofertas(gpu_term, max_price):
             
             # Faz requisição inicial para cookies
             session.get("https://www.kabum.com.br", timeout=30)
-            time.sleep(random.uniform(1, 3))
+            time.sleep(random.uniform(2, 4))
             
             # Faz busca
             response = session.get(busca_url, timeout=30, allow_redirects=True)
             
             if response.status_code != 200:
                 logger.warning(f"Status {response.status_code} para {busca_url}")
-                continue
-            
-            # Verifica se foi redirecionado
-            if "busca" not in response.url and "produto" not in response.url:
-                logger.warning(f"Redirecionado para: {response.url}")
                 continue
             
             soup = BeautifulSoup(response.text, "html.parser")
@@ -336,7 +342,7 @@ def buscar_ofertas(gpu_term, max_price):
                     f.write(response.text)
                 logger.debug(f"HTML salvo: {filename}")
             
-            # Busca cards com seletores atualizados
+            # Estratégia 1: Busca por cards de produto
             card_selectors = [
                 "article.productCard",
                 "div.productCard", 
@@ -346,7 +352,9 @@ def buscar_ofertas(gpu_term, max_price):
                 "div[data-testid*='product']",
                 "div[class*='item-card']",
                 "div[class*='listing-item']",
-                "a[href*='/produto/']"
+                "div[class*='card']",
+                "article",
+                "div[class*='item']"
             ]
             
             cards = []
@@ -356,6 +364,36 @@ def buscar_ofertas(gpu_term, max_price):
                     cards.extend(found_cards)
                     logger.info(f"Encontrados {len(found_cards)} cards com seletor: {selector}")
             
+            # Estratégia 2: Busca por links de produto
+            if not cards:
+                logger.info("Tentando estratégia alternativa: links de produto")
+                product_links = soup.select("a[href*='/produto/']")
+                for link in product_links:
+                    # Pega o elemento pai que contém as informações
+                    parent = link.find_parent()
+                    if parent and parent not in cards:
+                        cards.append(parent)
+                
+                logger.info(f"Encontrados {len(cards)} elementos via links de produto")
+            
+            # Estratégia 3: Busca por qualquer elemento que contenha preço
+            if not cards:
+                logger.info("Tentando estratégia alternativa: elementos com preço")
+                price_elements = soup.find_all(text=re.compile(r'R\$.*\d'))
+                for text in price_elements:
+                    element = text.parent
+                    if element and element not in cards:
+                        # Pega um elemento pai maior que pode conter mais informações
+                        for _ in range(3):  # Sobe até 3 níveis
+                            parent = element.find_parent()
+                            if parent and len(parent.get_text()) > len(element.get_text()):
+                                element = parent
+                            else:
+                                break
+                        cards.append(element)
+                
+                logger.info(f"Encontrados {len(cards)} elementos via preços")
+            
             # Remove duplicatas
             cards = list(set(cards))
             
@@ -363,16 +401,18 @@ def buscar_ofertas(gpu_term, max_price):
                 logger.warning(f"Nenhum card encontrado para {gpu_term}")
                 continue
             
-            logger.info(f"Total de {len(cards)} cards únicos encontrados")
+            logger.info(f"Total de {len(cards)} elementos únicos encontrados")
             
             # Processa cards
             ofertas = []
             for card_idx, card in enumerate(cards):
                 dados = extrair_dados_produto(card, gpu_term, debug_mode)
                 
-                if dados and dados["preco"] <= max_price:
+                if dados and dados["preco"] and dados["preco"] <= max_price:
                     ofertas.append(dados)
-                    logger.info(f"✅ Oferta: {dados['titulo']} - R$ {dados['preco']:.2f}")
+                    logger.info(f"✅ Oferta: {dados['titulo'][:50]}... - R$ {dados['preco']:.2f}")
+                elif debug_mode and dados:
+                    logger.debug(f"❌ Preço alto: {dados['titulo'][:50]}... - R$ {dados['preco']:.2f}")
             
             if ofertas:
                 logger.info(f"Encontradas {len(ofertas)} ofertas válidas para {gpu_term}")
@@ -424,7 +464,7 @@ def enviar_discord(categoria, modelo, ofertas):
             response = requests.post(WEBHOOK_URL, json=payload, timeout=10)
             response.raise_for_status()
             
-            logger.info(f"✅ Enviado: {oferta['titulo']} - R$ {oferta['preco']:.2f}")
+            logger.info(f"✅ Enviado: {oferta['titulo'][:50]}... - R$ {oferta['preco']:.2f}")
             
             # Rate limiting
             if i < len(ofertas) - 1:
