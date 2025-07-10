@@ -10,8 +10,9 @@ async def forward_to_discord(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if msg:
         print(f"[Telegram] Nova mensagem recebida: {msg}")
-        data = {
 
+        # 1) Mensagem com embed customizado (sem descrição para evitar link repetido)
+        embed_data = {
             "embeds": [
                 {
                     "title": "📦 Nova Promoção Detectada",
@@ -23,27 +24,24 @@ async def forward_to_discord(update: Update, context: ContextTypes.DEFAULT_TYPE)
             ]
         }
 
-    if msg:
-        print(f"[Telegram] Nova mensagem recebida: {msg}")
-        data = {
+        # Envia a mensagem com embed
+        response_embed = requests.post(DISCORD_WEBHOOK_URL, json=embed_data)
+        if response_embed.status_code == 204:
+            print("[Discord] Embed enviado com sucesso!")
+        else:
+            print(f"[Discord] Erro ao enviar embed: {response_embed.status_code} - {response_embed.text}")
 
-            "content": f"🤑 Nova Promoção na área!:\n{msg}"
+        # 2) Mensagem com o link puro no content para gerar preview automático
+        content_data = {
+            "content": msg
         }
 
-        response = requests.post(DISCORD_WEBHOOK_URL, json=data)
-
-        if response.status_code == 204:
-            print("[Discord] Mensagem enviada com sucesso!")
+        # Envia a mensagem com o link puro
+        response_content = requests.post(DISCORD_WEBHOOK_URL, json=content_data)
+        if response_content.status_code == 204:
+            print("[Discord] Conteúdo enviado com sucesso!")
         else:
-            print(f"[Discord] Erro ao enviar mensagem: {response.status_code} - {response.text}")
-
-
-        response = requests.post(DISCORD_WEBHOOK_URL, json=data)
-
-        if response.status_code == 204:
-            print("[Discord] Mensagem enviada com sucesso!")
-        else:
-            print(f"[Discord] Erro ao enviar mensagem: {response.status_code} - {response.text}")
+            print(f"[Discord] Erro ao enviar conteúdo: {response_content.status_code} - {response_content.text}")
 
 if __name__ == "__main__":
     bot_token = os.environ["TELEGRAM_BOT_TOKEN"]
