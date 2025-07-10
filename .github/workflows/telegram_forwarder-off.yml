@@ -1,7 +1,7 @@
 name: Telegram to Discord Forwarder
 
 concurrency:
-  group: telegram-discord-forwarder
+  group: telegram-discord-forwarder-off
   cancel-in-progress: true
 
 on:
