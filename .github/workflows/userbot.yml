@@ -1,11 +1,13 @@
-name: Run Telegram Userbot
+name: Telegram Userbot Monitor
+
+concurrency:
+  group: telegram-userbot
+  cancel-in-progress: true
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:  # permite rodar manualmente
   schedule:
-    - cron: '*/15 * * * *'  # roda a cada 15 minutos para garantir que tá rodando
+    - cron: "*/15 * * * *"  # roda a cada 15 minutos
 
 jobs:
   run-userbot:
@@ -14,7 +16,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Set up Python 3.10
+      - name: Setup Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: 3.10

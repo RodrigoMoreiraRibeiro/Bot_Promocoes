@@ -1,9 +1,13 @@
 name: Telegram to Discord Forwarder
 
+concurrency:
+  group: telegram-discord-forwarder
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:  # permite rodar manualmente
   schedule:
-    - cron: "*/15 * * * *"  # verifica novas mensagens a cada 15min
+    - cron: "*/15 * * * *"  # roda a cada 15 minutos
 
 jobs:
   run-bot:
