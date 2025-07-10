@@ -1,0 +1,33 @@
+name: Run Telegram Userbot
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '*/15 * * * *'  # roda a cada 15 minutos para garantir que tá rodando
+
+jobs:
+  run-userbot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.10
+
+      - name: Install dependencies
+        run: pip install telethon
+
+      - name: Decode Telegram session file
+        run: echo "${{ secrets.TELEGRAM_SESSION_BASE64 }}" | base64 -d > userbot_session.session
+
+      - name: Run userbot
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          GRUPO_PRIVADO_ID: ${{ secrets.GRUPO_PRIVADO_ID }}
+        run: python userbot_script.py

@@ -9,7 +9,7 @@ async def forward_to_discord(update: Update, context: ContextTypes.DEFAULT_TYPE)
     msg = update.message.text
     if msg:
         data = {
-            "content": f"📢 Nova mensagem do Telegram:\n{msg}"
+            "content": f"🤑 Nova Promoção na área! :\n{msg}"
         }
         requests.post(DISCORD_WEBHOOK_URL, json=data)
 
