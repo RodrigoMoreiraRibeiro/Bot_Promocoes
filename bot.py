@@ -7,9 +7,11 @@ DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 
 async def forward_to_discord(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
+
     if msg:
         print(f"[Telegram] Nova mensagem recebida: {msg}")
         data = {
+
             "embeds": [
                 {
                     "title": "📦 Nova Promoção Detectada",
@@ -18,9 +20,23 @@ async def forward_to_discord(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         "text": "Bot de Promoções",
                     }
                 }
-            ],
-            "content": f"{msg}"
+            ]
         }
+
+    if msg:
+        print(f"[Telegram] Nova mensagem recebida: {msg}")
+        data = {
+
+            "content": f"🤑 Nova Promoção na área!:\n{msg}"
+        }
+
+        response = requests.post(DISCORD_WEBHOOK_URL, json=data)
+
+        if response.status_code == 204:
+            print("[Discord] Mensagem enviada com sucesso!")
+        else:
+            print(f"[Discord] Erro ao enviar mensagem: {response.status_code} - {response.text}")
+
 
         response = requests.post(DISCORD_WEBHOOK_URL, json=data)
 
