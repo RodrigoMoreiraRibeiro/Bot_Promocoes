@@ -43,7 +43,7 @@ jobs:
           
       - name: 📊 Upload de logs (se falhar)
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bot-logs
           path: |
@@ -53,7 +53,7 @@ jobs:
           
       - name: 📈 Salvar histórico
         if: success()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: historico-ofertas
           path: historico_ofertas.json
