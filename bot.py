@@ -13,13 +13,13 @@ async def forward_to_discord(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "embeds": [
                 {
                     "title": "📦 Nova Promoção Detectada",
-                    "description": msg,
                     "color": 0x00ff00,  # verde
                     "footer": {
                         "text": "Bot de Promoções",
                     }
                 }
-            ]
+            ],
+            "content": f"{msg}"
         }
 
         response = requests.post(DISCORD_WEBHOOK_URL, json=data)
