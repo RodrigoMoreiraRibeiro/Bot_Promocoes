@@ -42,11 +42,17 @@ def buscar_ofertas(gpu_term, max_price):
     ofertas = []
     for card in cards:
         titulo = card.find("span", class_="nameCard").get_text(strip=True)
-        preco_elemento = card.find("span", class_="priceCard")
-        if not preco_elemento:
-            continue
+        precos_possiveis = card.find_all("span", class_=re.compile("priceCard"))
+        preco = None
 
-        preco = extrair_preco(preco_elemento.text)
+        for p in precos_possiveis:
+            valor = extrair_preco(p.get_text())
+            if valor:
+                if preco is None or valor < preco:
+                    preco = valor
+
+        if preco is None:
+            continue
         link = "https://www.kabum.com.br" + card.find("a")["href"]
 
         if preco and preco <= max_price:
