@@ -47,5 +47,5 @@ if __name__ == "__main__":
     bot_token = os.environ["TELEGRAM_BOT_TOKEN"]
     print("🤖 Bot Telegram → Discord iniciado.")
     app = ApplicationBuilder().token(bot_token).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, forward_to_discord))
+    app.add_handler(MessageHandler(filters.ALL, forward_to_discord))
     app.run_polling()
