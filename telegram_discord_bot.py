@@ -91,7 +91,7 @@ if __name__ == "__main__":
         | filters.Document
         | filters._Audio
         | filters._Voice
-        | filters.Forwarded
+        | filters._Forwarded
     )
 
 
