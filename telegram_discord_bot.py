@@ -58,7 +58,7 @@ async def main():
     # Adiciona handler para mensagens de texto, fotos com legenda, documentos etc
     app.add_handler(
         MessageHandler(
-            filters.TEXT | filters.PHOTO | filters.DOCUMENT | filters.VIDEO,
+            filters.Text | filters._Photo | filters.Document | filters._Video,
             forward_to_discord,
         )
     )
