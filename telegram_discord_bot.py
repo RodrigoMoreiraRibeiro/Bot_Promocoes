@@ -84,7 +84,7 @@ if __name__ == "__main__":
     app = ApplicationBuilder().token(bot_token).build()
 
     all_filters = (
-        filters.text
+        filters.Text
         | filters.caption
         | filters.photo
         | filters.video
