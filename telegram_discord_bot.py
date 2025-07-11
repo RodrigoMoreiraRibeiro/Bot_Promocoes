@@ -107,13 +107,15 @@ if __name__ == "__main__":
     # IMPORTANTE: Usar filters mais específicos para capturar TUDO
     # Combinando múltiplos filtros para garantir que capture tudo
     all_filters = (
-        filters.TEXT |
-        filters.PHOTO |
-        filters.VIDEO |
-        filters.DOCUMENT |
-        filters.AUDIO |
-        filters.VOICE |
-        filters.FORWARDED
+        filters.TEXT |             # texto
+        filters.CAPTION |          # legenda em mídia
+        filters.PHOTO |            # fotos
+        filters.VIDEO |            # vídeos
+        filters.Document |         # documentos (observe D maiúsculo)
+        filters.AUDIO |            # áudio
+        filters.VOICE |            # mensagem de voz
+        filters.FORWARDED |        # mensagens encaminhadas
+        filters.UpdateType.MESSAGE # atualizações do tipo mensagem
     )
     
     app.add_handler(MessageHandler(all_filters, forward_to_discord))
