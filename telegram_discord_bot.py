@@ -87,7 +87,7 @@ if __name__ == "__main__":
         filters.Text
         | filters.Caption
         | filters._Photo
-        | filters.Video
+        | filters._Video
         | filters.Document
         | filters.Audio
         | filters.Voice
