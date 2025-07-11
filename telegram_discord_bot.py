@@ -1,68 +1,72 @@
 import os
 import logging
-import requests
+import nest_asyncio
+import asyncio
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
-# Configuração básica de logs
-logging.basicConfig(level=logging.INFO)
+# Aplica patch para permitir rodar asyncio em ambiente que já tem event loop
+nest_asyncio.apply()
+
+# Configura logging para ajudar no debug
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
-# Lê as variáveis de ambiente
-DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
-if not DISCORD_WEBHOOK_URL:
-    logger.error("🚨 Variável DISCORD_WEBHOOK_URL não configurada!")
-    exit(1)
+# Pega as variáveis de ambiente (lembre de configurar os secrets no GitHub)
+DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
+TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-if not TELEGRAM_BOT_TOKEN:
-    logger.error("🚨 Variável TELEGRAM_BOT_TOKEN não configurada!")
-    exit(1)
 
-async def forward_to_discord(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def forward_to_discord(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        message = update.message
-        text = message.text or message.caption or ""
-        logger.info(f"[Telegram] Mensagem recebida: {text[:50]}...")
+        msg = update.message
+        if not msg:
+            return
 
-        # Monta o payload para o embed do Discord
-        embed = {
-            "title": "📦 Nova Promoção Detectada",
-            "description": text,
-            "color": 0x00ff00,
-            "footer": {
-                "text": "Bot de Promoções",
-            }
-        }
+        # Exemplo simples: enviar texto para o Discord via webhook
+        import aiohttp
 
-        # Se tiver foto (ou mídia que tenha thumbnail), pega a última foto
-        if message.photo:
-            photo_file = await message.photo[-1].get_file()
-            photo_url = photo_file.file_path
-            embed["image"] = {"url": photo_url}
+        content = msg.text or msg.caption or ""
+        # Você pode montar um JSON com embeds, imagens etc aqui
+        payload = {"content": f"📢 Nova mensagem do Telegram:\n{content}"}
 
-        payload = {
-            "embeds": [embed]
-        }
-
-        # Envia para o Discord via webhook
-        response = requests.post(DISCORD_WEBHOOK_URL, json=payload)
-        if response.status_code not in (200, 204):
-            logger.error(f"Erro ao enviar para Discord: {response.status_code} - {response.text}")
+        async with aiohttp.ClientSession() as session:
+            async with session.post(DISCORD_WEBHOOK_URL, json=payload) as resp:
+                if resp.status != 204 and resp.status != 200:
+                    logger.error(f"Erro ao enviar mensagem para Discord: {resp.status}")
+                else:
+                    logger.info("Mensagem enviada para o Discord com sucesso!")
 
     except Exception as e:
-        logger.exception(f"Erro no forward_to_discord: {e}")
+        logger.error(f"Erro em forward_to_discord: {e}", exc_info=True)
+
 
 async def main():
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .build()
+    )
 
-    # Escuta mensagens de texto e fotos (você pode expandir filtros se quiser)
-    handler = MessageHandler(filters.TEXT | filters.PHOTO, forward_to_discord)
-    app.add_handler(handler)
+    # Adiciona handler para mensagens de texto, fotos com legenda, documentos etc
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT | filters.PHOTO | filters.DOCUMENT | filters.VIDEO,
+            forward_to_discord,
+        )
+    )
 
     logger.info("🤖 Bot Telegram → Discord iniciado.")
     await app.run_polling()
 
+
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
