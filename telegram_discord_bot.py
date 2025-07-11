@@ -86,7 +86,7 @@ if __name__ == "__main__":
     all_filters = (
         filters.Text
         | filters.Caption
-        | filters.Photo
+        | filters._Photo
         | filters.Video
         | filters.Document
         | filters.Audio
