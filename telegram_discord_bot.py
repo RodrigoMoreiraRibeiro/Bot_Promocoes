@@ -84,15 +84,16 @@ if __name__ == "__main__":
     app = ApplicationBuilder().token(bot_token).build()
 
     all_filters = (
-        filters.TEXT
-        | filters.CAPTION
-        | filters.PHOTO
-        | filters.VIDEO
-        | filters.DOCUMENT
-        | filters.AUDIO
-        | filters.VOICE
-        | filters.FORWARDED
+        filters.text
+        | filters.caption
+        | filters.photo
+        | filters.video
+        | filters.document
+        | filters.audio
+        | filters.voice
+        | filters.forwarded
     )
+
 
     app.add_handler(MessageHandler(all_filters, forward_to_discord))
 
