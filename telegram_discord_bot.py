@@ -85,13 +85,13 @@ if __name__ == "__main__":
 
     all_filters = (
         filters.Text
-        | filters.caption
-        | filters.photo
-        | filters.video
-        | filters.document
-        | filters.audio
-        | filters.voice
-        | filters.forwarded
+        | filters.Caption
+        | filters.Photo
+        | filters.Video
+        | filters.Document
+        | filters.Audio
+        | filters.Voice
+        | filters.Forwarded
     )
 
 
