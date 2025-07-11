@@ -89,8 +89,8 @@ if __name__ == "__main__":
         | filters._Photo
         | filters._Video
         | filters.Document
-        | filters.Audio
-        | filters.Voice
+        | filters._Audio
+        | filters._Voice
         | filters.Forwarded
     )
 
